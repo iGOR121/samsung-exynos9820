@@ -6,6 +6,7 @@
  */
 
 #include <linux/cpufreq.h>
+#include <linux/cpuidle.h>
 #include <trace/events/ems.h>
 
 #include "../sched.h"
@@ -105,6 +106,14 @@ unsigned long get_freq_cap(unsigned int cpu, unsigned long freq, int sse)
 
 extern unsigned long __ml_cpu_util(int cpu, int sse);
 
+static unsigned long normalized_util(unsigned long util, unsigned long capacity)
+{
+	if (util >= capacity)
+		return SCHED_CAPACITY_SCALE;
+
+	return util << SCHED_CAPACITY_SHIFT / capacity;
+}
+
 unsigned int calculate_energy(struct task_struct *p, int target_cpu)
 {
 	unsigned long util[NR_CPUS] = {0, };
@@ -199,8 +208,8 @@ unsigned int calculate_energy(struct task_struct *p, int target_cpu)
 			}
 
 			/* normalize cpu utilization */
-			util_sum += (uss_util << SCHED_CAPACITY_SHIFT) / capacity;
-			util_sum_s += (sse_util << SCHED_CAPACITY_SHIFT) / capacity_s;
+			util_sum += normalized_util(uss_util, capacity);
+			util_sum_s += normalized_util(sse_util, capacity_s);
 		}
 
 		/*
@@ -213,9 +222,18 @@ unsigned int calculate_energy(struct task_struct *p, int target_cpu)
 	return total_energy;
 }
 
-static int find_min_util_cpu(const struct cpumask *mask, struct task_struct *p)
+struct cpu_env {
+	int cpu;
+	int idle_idx;
+	unsigned long util;
+	unsigned int exit_latency;
+};
+
+static int find_min_util_cpu(struct cpu_env *cenv, const struct cpumask *mask, struct task_struct *p)
 {
+	struct cpuidle_state *state = NULL;
 	unsigned long min_util = ULONG_MAX;
+	int idle_idx = INT_MAX;
 	int min_util_cpu = -1;
 	int cpu;
 
@@ -236,23 +254,35 @@ static int find_min_util_cpu(const struct cpumask *mask, struct task_struct *p)
 		if (util < min_util) {
 			min_util = util;
 			min_util_cpu = cpu;
+			idle_idx = idle_get_state_idx(cpu_rq(cpu));
 		}
 	}
 
-	return min_util_cpu;
+	if (cpu_selected(min_util_cpu))
+		state = idle_get_state(cpu_rq(min_util_cpu));
+
+	cenv->cpu = min_util_cpu;
+	cenv->util = !cpu_selected(min_util_cpu) ? min_util
+		: normalized_util(min_util, capacity_orig_of(min_util_cpu));
+	cenv->idle_idx = idle_idx;
+	cenv->exit_latency = state ? state->exit_latency : UINT_MAX;
 }
 
 struct eco_env {
 	struct task_struct *p;
 	int prev_cpu;
+	struct cpu_env *cenv;
 };
 
 static int select_eco_cpu(struct eco_env *eenv)
 {
+	unsigned long best_util = ULONG_MAX;
 	unsigned int best_energy = UINT_MAX;
 	unsigned int prev_energy;
 	int eco_cpu = eenv->prev_cpu;
 	int cpu, best_cpu = -1;
+	int best_idle_idx = INT_MAX;
+	unsigned int best_exit_latency = UINT_MAX;
 
 	/*
 	 * It is meaningless to find an energy cpu when the energy table is
@@ -263,7 +293,7 @@ static int select_eco_cpu(struct eco_env *eenv)
 
 	for_each_cpu(cpu, cpu_active_mask) {
 		struct cpumask mask;
-		int energy_cpu;
+		struct cpu_env cenv;
 
 		if (cpu != cpumask_first(cpu_coregroup_mask(cpu)))
 			continue;
@@ -281,14 +311,42 @@ static int select_eco_cpu(struct eco_env *eenv)
 		 * Select the best target, which is expected to consume the
 		 * lowest energy among the min util cpu for each coregroup.
 		 */
-		energy_cpu = find_min_util_cpu(&mask, eenv->p);
-		if (cpu_selected(energy_cpu)) {
-			unsigned int energy = calculate_energy(eenv->p, energy_cpu);
+		find_min_util_cpu(&cenv, &mask, eenv->p);
+		if (cpu_selected(cenv.cpu)) {
+			unsigned int energy = calculate_energy(eenv->p, cenv.cpu);
 
-			if (energy < best_energy) {
-				best_energy = energy;
-				best_cpu = energy_cpu;
-			}
+			/* 1. find min_energy cpu */
+			if (energy < best_energy)
+				goto energy_cpu_found;
+			if (energy > best_energy)
+				continue;
+
+			/* 2. find min_util cpu when energy is same */
+			if (cenv.util < best_util)
+				goto energy_cpu_found;
+			if (cenv.util > best_util)
+				continue;
+
+			/* 3. find idle cpu when energy, util are same */
+			if (best_idle_idx == -1 && cenv.idle_idx > -1)
+				goto energy_cpu_found;
+
+			/* 4. find shallower idle cpu when energy, util, idle-status are same */
+			if ((best_idle_idx > -1) && (best_idle_idx > cenv.idle_idx))
+				goto energy_cpu_found;
+			else if (best_idle_idx < cenv.idle_idx)
+				continue;
+
+			/* 5. find cpu with least exit latency */
+			if (cenv.exit_latency > best_exit_latency)
+				continue;
+
+energy_cpu_found:
+			best_energy = energy;
+			best_cpu = cenv.cpu;
+			best_util = cenv.util;
+			best_idle_idx = cenv.idle_idx;
+			best_exit_latency = cenv.exit_latency;
 		}
 	}
 
@@ -467,10 +525,10 @@ static int select_eff_cpu(struct eco_env *eenv)
 	 * not created or has not been created yet.
 	 */
 	if (!per_cpu(energy_table, eenv->prev_cpu).nr_states)
-		return find_min_util_cpu(cpu_coregroup_mask(4), eenv->p);
+		return find_min_util_cpu(eenv->cenv, cpu_coregroup_mask(4), eenv->p);
 
 	if (ml_task_util_est(eenv->p) <= tiny_task_level)
-		return find_min_util_cpu(cpu_coregroup_mask(4), eenv->p);
+		return find_min_util_cpu(eenv->cenv, cpu_coregroup_mask(4), eenv->p);
 
 	for_each_cpu(cpu, cpu_active_mask) {
 		unsigned int energy;
