@@ -473,7 +473,6 @@ int kbase_sync_fence_in_info_get(struct kbase_jd_atom *katom,
 
 	info->fence = katom->fence;
 	info->status = kbase_fence_get_status(katom->fence);
-	strlcpy(info->name, katom->fence->name, sizeof(info->name));
 
 	return 0;
 }
@@ -486,7 +485,6 @@ int kbase_sync_fence_out_info_get(struct kbase_jd_atom *katom,
 
 	info->fence = katom->fence;
 	info->status = kbase_fence_get_status(katom->fence);
-	strlcpy(info->name, katom->fence->name, sizeof(info->name));
 
 	return 0;
 }
