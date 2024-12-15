@@ -41,6 +41,8 @@
 #define IOVA_OVFL(addr, size)	((((addr) + (size)) > 0xFFFFFFFF) ||	\
 				((addr) + (size) < (addr)))
 
+#define ENABLE_FAULT_REPORTING 0
+
 static struct kmem_cache *lv2table_kmem_cache;
 
 static struct sysmmu_drvdata *sysmmu_drvdata_list;
@@ -174,6 +176,7 @@ irqreturn_t exynos_sysmmu_irq_secure(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+#if ENABLE_FAULT_REPORTING
 static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 {
 	struct sysmmu_drvdata *drvdata = dev_id;
@@ -196,6 +199,7 @@ static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static int sysmmu_get_hw_info(struct sysmmu_drvdata *data)
 {
@@ -229,12 +233,14 @@ static int __init __sysmmu_secure_irq_init(struct device *sysmmu,
 	}
 	dev_info(sysmmu, "Registering secure irq %d\n", ret);
 
+#if ENABLE_FAULT_REPORTING
 	ret = devm_request_irq(sysmmu, ret, exynos_sysmmu_irq_secure, 0,
 			dev_name(sysmmu), drvdata);
 	if (ret) {
 		dev_err(sysmmu, "Failed to register secure irq handler\n");
 		return ret;
 	}
+#endif
 
 	ret = of_property_read_u32(sysmmu->of_node,
 				"sysmmu,secure_base", &secure_reg);
@@ -512,12 +518,14 @@ static int __init exynos_sysmmu_probe(struct platform_device *pdev)
 		return irq;
 	}
 
+#if ENABLE_FAULT_REPORTING
 	ret = devm_request_irq(dev, irq, exynos_sysmmu_irq, 0,
 				dev_name(dev), data);
 	if (ret) {
 		dev_err(dev, "Unabled to register handler of irq %d\n", irq);
 		return ret;
 	}
+#endif
 
 	data->clk = devm_clk_get(dev, "aclk");
 	if (IS_ERR(data->clk)) {
