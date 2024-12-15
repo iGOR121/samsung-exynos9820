@@ -308,17 +308,6 @@ void kbase_sync_fence_info_get(struct dma_fence *fence,
 	} else  {
 		info->status = 0; /* still active (unsignaled) */
 	}
-
-#if (KERNEL_VERSION(4, 8, 0) > LINUX_VERSION_CODE)
-	scnprintf(info->name, sizeof(info->name), "%u#%u",
-		  fence->context, fence->seqno);
-#elif (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
-	scnprintf(info->name, sizeof(info->name), "%llu#%u",
-		  fence->context, fence->seqno);
-#else
-	scnprintf(info->name, sizeof(info->name), "%llu#%llu",
-		  fence->context, fence->seqno);
-#endif
 }
 
 #if !MALI_USE_CSF
