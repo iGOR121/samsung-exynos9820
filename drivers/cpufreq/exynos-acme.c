@@ -580,7 +580,8 @@ static struct notifier_block exynos_cpufreq_pm = {
 
 static struct cpufreq_driver exynos_driver = {
 	.name		= "exynos_cpufreq",
-	.flags		= CPUFREQ_STICKY | CPUFREQ_HAVE_GOVERNOR_PER_POLICY,
+	.flags		= CPUFREQ_STICKY | CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
+				CPUFREQ_CONST_LOOPS,
 	.init		= exynos_cpufreq_driver_init,
 	.verify		= exynos_cpufreq_verify,
 	.target		= exynos_cpufreq_target,
