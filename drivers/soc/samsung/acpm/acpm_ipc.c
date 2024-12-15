@@ -56,6 +56,9 @@ void acpm_ipc_set_waiting_mode(bool mode)
 
 void acpm_fw_log_level(unsigned int on)
 {
+	if (!IS_ENABLED(CONFIG_ACPM_ENABLE_LOGGING))
+		return;
+
 	acpm_debug->debug_log_level = on;
 }
 
@@ -100,7 +103,7 @@ void timestamp_write(void)
 	spin_unlock_irqrestore(&acpm_debug->lock, flags);
 }
 
-void acpm_log_print(void)
+static void acpm_log_print(void)
 {
 	unsigned int front;
 	unsigned int rear;
