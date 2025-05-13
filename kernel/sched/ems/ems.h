@@ -31,6 +31,7 @@ extern int band_play_cpu(struct task_struct *p);
 
 extern int need_ontime_migration_trigger(int cpu, struct task_struct *p);
 
+extern bool is_cpu_preemptible(struct task_struct *p, int prev_cpu, int cpu, int sync);
 extern unsigned long ml_task_util(struct task_struct *p);
 extern unsigned long ml_task_runnable(struct task_struct *p);
 extern unsigned long ml_task_util_est(struct task_struct *p);
