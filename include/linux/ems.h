@@ -72,6 +72,8 @@ extern void newbie_join_band(struct task_struct *newbie);
 extern void update_band(struct task_struct *p, long old_util);
 extern int band_playing(struct task_struct *p, int cpu);
 
+extern bool is_slowest_cpu(int cpu);
+
 /* multi load  */
 void update_multi_load(u64 delta, int cpu, struct sched_avg *sa,
 		unsigned long weight, int running, struct cfs_rq *cfs_rq);
@@ -169,6 +171,10 @@ static inline int lb_need_active_balance(enum cpu_idle_type idle,
 }
 static inline void set_energy_table_status(bool status) { }
 static inline bool get_energy_table_status(void)
+{
+	return false;
+}
+static inline bool is_slowest_cpu(int cpu)
 {
 	return false;
 }
