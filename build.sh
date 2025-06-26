@@ -1,0 +1,1 @@
+./cruelbuild mkimg os_patch_level=2023-03 model=G973F name="mcdicken" toolchain=default +fake_config +performance +noksm -magisk +nohardening +ttl +wireguard +cifs +sdfat +ntfs +force_dex_wqhd -morosound +boeffla_wl_blocker
